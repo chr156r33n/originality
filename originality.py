@@ -96,6 +96,59 @@ def compute_originality(target_text, corpus_texts, corpus_urls, use_sbert=True, 
 
 def main():
     st.title("Content Originality Checker")
+    
+    # Help accordion
+    with st.expander("ℹ️ How to Use This App"):
+        st.markdown("""
+        ### Quick Start Guide
+        1. Choose your embedding method (SBERT or OpenAI)
+        2. If using OpenAI, enter your API key
+        3. Enter URLs either through text input or file upload
+        4. Enter the target URL you want to check
+        5. Click 'Check Originality' to analyze
+
+        ### Input Methods
+        - **Text Input**: Paste URLs directly, one per line
+        - **File Upload**: Upload a .txt file with URLs (one per line)
+        
+        ### Embedding Methods
+        - **SBERT** (default): Free, local embedding model
+        - **OpenAI**: More powerful but requires API key (paid service)
+        
+        ### Understanding the Results
+        
+        #### Main Metrics
+        - **Originality Score**: 
+            - Range: 0-100%
+            - Higher is more original
+            - 90%+ : Highly original
+            - 70-90%: Mostly original
+            - 50-70%: Moderate originality
+            - <50%: High similarity to existing content
+        
+        - **Average Similarity**:
+            - Shows overall similarity to all corpus content
+            - Lower numbers indicate more unique content
+            - Higher numbers suggest common themes/content
+        
+        - **Word Count**: 
+            - Length of analyzed content
+            - Useful for context when comparing similarities
+        
+        #### Detailed Results Table
+        - **URL**: Webpage being analyzed
+        - **Type**: Target (your URL) or Corpus (comparison URLs)
+        - **Originality Score**: Individual originality scores
+        - **Similarity to Target**: Direct similarity measurements
+        - **Word Count**: Content length for each URL
+        
+        ### Tips for Best Results
+        1. Include diverse URLs in your corpus for better comparison
+        2. Ensure URLs are accessible and contain relevant content
+        3. Compare content within similar topics for more meaningful results
+        4. Consider both originality score and average similarity for full context
+        """)
+
     st.write("Compare a target URL's content against a corpus of URLs to check originality")
 
     # Embedding method selection
