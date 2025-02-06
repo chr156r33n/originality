@@ -19,8 +19,13 @@ sbert_model = load_model()
 def get_openai_embedding(text, api_key):
     openai.api_key = api_key
     try:
-        response = openai.Embedding.create(input=text, model="text-embedding-ada-002")
-        return response["data"][0]["embedding"]
+        # Updated API call format for OpenAI >= 1.0.0
+        client = openai.OpenAI(api_key=api_key)
+        response = client.embeddings.create(
+            input=text,
+            model="text-embedding-ada-002"
+        )
+        return response.data[0].embedding
     except Exception as e:
         st.error(f"OpenAI API error: {str(e)}")
         return None
