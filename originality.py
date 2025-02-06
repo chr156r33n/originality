@@ -3,9 +3,10 @@ import requests
 import trafilatura
 import csv
 from sentence_transformers import SentenceTransformer, util
-#import openai  # Uncomment to use OpenAI embeddings
 from io import StringIO
 import pandas as pd
+import openai
+import os
 
 # Use SBERT model
 @st.cache_resource
@@ -14,10 +15,15 @@ def load_model():
 
 sbert_model = load_model()
 
-# OpenAI embedding function (commented out for now)
-# def get_openai_embedding(text):
-#     response = openai.Embedding.create(input=text, model="text-embedding-ada-002")
-#     return response["data"][0]["embedding"]
+# OpenAI embedding function
+def get_openai_embedding(text, api_key):
+    openai.api_key = api_key
+    try:
+        response = openai.Embedding.create(input=text, model="text-embedding-ada-002")
+        return response["data"][0]["embedding"]
+    except Exception as e:
+        st.error(f"OpenAI API error: {str(e)}")
+        return None
 
 def fetch_main_content(url):
     """Fetches and extracts main content using requests and Trafilatura."""
@@ -35,8 +41,8 @@ def fetch_main_content(url):
         st.error(f"Error fetching {url}: {e}")
         return ""
 
-def compute_originality(target_text, corpus_texts, corpus_urls, use_sbert=True):
-    """Computes originality score and additional metrics by comparing the target text against a corpus."""
+def compute_originality(target_text, corpus_texts, corpus_urls, use_sbert=True, openai_api_key=None):
+    """Computes originality score using either SBERT or OpenAI embeddings."""
     if not corpus_texts:
         return 1.0, [], 0, "", 0  # If no corpus, assume fully original
     
@@ -45,28 +51,63 @@ def compute_originality(target_text, corpus_texts, corpus_urls, use_sbert=True):
     
     with st.spinner('Computing embeddings and similarities...'):
         if use_sbert:
-            # Encode with SBERT
+            # SBERT embedding logic
             target_embedding = sbert_model.encode(target_text, convert_to_tensor=True)
             corpus_embeddings = sbert_model.encode(corpus_texts, convert_to_tensor=True)
-            
-            # Compute cosine similarity with each corpus page
             similarities = util.pytorch_cos_sim(target_embedding, corpus_embeddings).squeeze().tolist()
+        else:
+            # OpenAI embedding logic
+            target_embedding = get_openai_embedding(target_text, openai_api_key)
+            if target_embedding is None:
+                st.error("Failed to get OpenAI embedding for target text")
+                return None, None, None, None, None
+                
+            corpus_embeddings = []
+            for text in corpus_texts:
+                emb = get_openai_embedding(text, openai_api_key)
+                if emb is None:
+                    st.error("Failed to get OpenAI embedding for corpus text")
+                    return None, None, None, None, None
+                corpus_embeddings.append(emb)
             
-            # Calculate statistics
-            max_similarity = max(similarities) if similarities else 0
-            avg_similarity = sum(similarities) / len(similarities) if similarities else 0
-            most_similar_index = similarities.index(max_similarity) if similarities else -1
-            most_similar_url = corpus_urls[most_similar_index] if most_similar_index != -1 else ""
-            
-            originality_score = 1 - max_similarity  # Lower similarity → higher originality
-            
-            return originality_score, similarities, avg_similarity, most_similar_url, len(target_text.split())
+            # Compute cosine similarities using numpy
+            import numpy as np
+            target_embedding = np.array(target_embedding)
+            corpus_embeddings = np.array(corpus_embeddings)
+            similarities = [
+                np.dot(target_embedding, corp_emb) / (np.linalg.norm(target_embedding) * np.linalg.norm(corp_emb))
+                for corp_emb in corpus_embeddings
+            ]
+        
+        # Calculate statistics
+        max_similarity = max(similarities) if similarities else 0
+        avg_similarity = sum(similarities) / len(similarities) if similarities else 0
+        most_similar_index = similarities.index(max_similarity) if similarities else -1
+        most_similar_url = corpus_urls[most_similar_index] if most_similar_index != -1 else ""
+        
+        originality_score = 1 - max_similarity
+        
+        return originality_score, similarities, avg_similarity, most_similar_url, len(target_text.split())
 
 def main():
     st.title("Content Originality Checker")
     st.write("Compare a target URL's content against a corpus of URLs to check originality")
 
-    # Input methods
+    # Embedding method selection
+    use_sbert = not st.checkbox("Use OpenAI Embeddings", False)
+    
+    # Show API key input if OpenAI is selected
+    openai_api_key = None
+    if not use_sbert:
+        openai_api_key = st.text_input(
+            "OpenAI API Key",
+            type="password",
+            help="Enter your OpenAI API key to use their embedding model"
+        )
+        if not openai_api_key:
+            st.warning("Please enter an OpenAI API key to use OpenAI embeddings")
+
+    # Rest of the input UI
     input_method = st.radio(
         "Choose input method for comparison URLs:",
         ["Text Input", "File Upload"]
@@ -92,6 +133,11 @@ def main():
     target_url = st.text_input("Enter the target URL to check:", help="This is the URL you want to check for originality")
 
     if st.button("Check Originality") and target_url and corpus_urls:
+        # Validate OpenAI API key if selected
+        if not use_sbert and not openai_api_key:
+            st.error("Please provide an OpenAI API key to use OpenAI embeddings")
+            return
+
         with st.spinner('Fetching content from URLs...'):
             corpus_texts = [fetch_main_content(url) for url in corpus_urls]
             valid_corpus = [(url, text) for url, text in zip(corpus_urls, corpus_texts) if text]
@@ -107,13 +153,23 @@ def main():
                 st.error("Failed to fetch target content.")
                 return
 
-        # Compute originality
-        originality_score, similarities, avg_similarity, most_similar_url, word_count = compute_originality(
-            target_text, corpus_texts, corpus_urls, use_sbert=True
+        # Compute originality with selected embedding method
+        results = compute_originality(
+            target_text,
+            corpus_texts,
+            corpus_urls,
+            use_sbert=use_sbert,
+            openai_api_key=openai_api_key
         )
+        
+        if results[0] is None:  # Check if computation failed
+            return
+            
+        originality_score, similarities, avg_similarity, most_similar_url, word_count = results
 
         # Display results
         st.header("Results")
+        st.write(f"Using {'SBERT' if use_sbert else 'OpenAI'} embeddings")
         
         # Main metrics
         col1, col2, col3 = st.columns(3)
