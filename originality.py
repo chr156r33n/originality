@@ -35,7 +35,7 @@ def compute_similarity(target_embedding, corpus_embeddings):
     similarities = util.cos_sim(target_embedding, corpus_embeddings)
     return similarities.numpy().tolist()[0]
 
-def compute_conceptual_originality(target_text, corpus_texts):
+def compute_conceptual_originality(target_text, corpus_texts, corpus_urls):
     """Compute topic-based originality using BERTopic."""
     if len(corpus_texts) < 2:
         st.warning("Not enough documents for BERTopic, defaulting to full originality.")
@@ -56,8 +56,8 @@ def compute_conceptual_originality(target_text, corpus_texts):
         # Debugging output
         st.subheader("Topic Analysis")
         st.write("Target Page Topics (Filtered):", target_topic_words)
-        for i, corpus_topic in enumerate(corpus_topic_words):
-            st.write(f"Corpus Page {i+1} Topics (Filtered):", corpus_topic)
+        for i, (corpus_topic, url) in enumerate(zip(corpus_topic_words, corpus_urls)):
+            st.write(f"Corpus Page {i+1} Topics (Filtered) from {url}:", corpus_topic)
             st.write(f"Jaccard Similarity with Target: {1 - conceptual_originality:.4f}")
     
         return conceptual_originality
@@ -65,7 +65,7 @@ def compute_conceptual_originality(target_text, corpus_texts):
         st.error(f"BERTopic failed: {e}. Defaulting to full originality.")
         return 1.0
 
-def compute_hybrid_originality(target_text, corpus_texts, alpha=0.5):
+def compute_hybrid_originality(target_text, corpus_texts, corpus_urls, alpha=0.5):
     """Compute hybrid originality score by combining SBERT semantic similarity and BERTopic conceptual originality."""
     if not corpus_texts:
         return 1.0  # Default originality score if no corpus is provided
@@ -79,7 +79,7 @@ def compute_hybrid_originality(target_text, corpus_texts, alpha=0.5):
     semantic_originality = 1 - avg_similarity  # Higher means more original
     
     # Compute conceptual originality
-    conceptual_originality = compute_conceptual_originality(target_text, corpus_texts)
+    conceptual_originality = compute_conceptual_originality(target_text, corpus_texts, corpus_urls)
     
     # Combine both scores
     hybrid_originality = alpha * semantic_originality + (1 - alpha) * conceptual_originality
@@ -102,5 +102,5 @@ if st.button("Calculate Originality"):
     with st.spinner("Fetching content and computing originality..."):
         target_text = fetch_main_content(target_url)
         corpus_texts = [fetch_main_content(url) for url in corpus_urls if url.strip()]
-        originality_score = compute_hybrid_originality(target_text, corpus_texts, alpha)
+        originality_score = compute_hybrid_originality(target_text, corpus_texts, corpus_urls, alpha)
         st.success(f"Hybrid Originality Score: {originality_score:.4f}")
