@@ -5,15 +5,13 @@ from sentence_transformers import SentenceTransformer, util
 from bertopic import BERTopic
 from bs4 import BeautifulSoup
 
-# Load SBERT model
-sbert_model = SentenceTransformer("all-MiniLM-L6-v2")
+def load_models():
+    """Load SBERT and BERTopic models."""
+    sbert_model = SentenceTransformer("all-MiniLM-L6-v2")
+    bertopic_model = BERTopic(min_topic_size=2, calculate_probabilities=True, verbose=True)
+    return sbert_model, bertopic_model
 
-# Load BERTopic model
-@st.cache_resource
-def load_bertopic():
-    return BERTopic()
-
-bertopic_model = load_bertopic()
+sbert_model, bertopic_model = load_models()
 
 def fetch_main_content(url):
     """Fetch and extract the main content from a given URL."""
@@ -34,25 +32,33 @@ def compute_similarity(target_embedding, corpus_embeddings):
 
 def compute_conceptual_originality(target_text, corpus_texts):
     """Compute topic-based originality using BERTopic."""
-    all_texts = [target_text] + corpus_texts
-    topics, _ = bertopic_model.fit_transform(all_texts)
-    target_topic_words = set(bertopic_model.get_topic(topics[0]))
-    corpus_topic_words = [set(bertopic_model.get_topic(t)) for t in topics[1:] if t != -1]
+    if len(corpus_texts) < 2:
+        st.warning("Not enough documents for BERTopic, defaulting to full originality.")
+        return 1.0
     
-    jaccard_similarities = [
-        len(target_topic_words & corpus_topic) / max(len(target_topic_words | corpus_topic), 1)
-        for corpus_topic in corpus_topic_words
-    ]
-    conceptual_originality = 1 - max(jaccard_similarities) if jaccard_similarities else 1.0
+    try:
+        all_texts = [target_text] + corpus_texts
+        topics, _ = bertopic_model.fit_transform(all_texts)
+        target_topic_words = set(bertopic_model.get_topic(topics[0]))
+        corpus_topic_words = [set(bertopic_model.get_topic(t)) for t in topics[1:] if t != -1]
+        
+        jaccard_similarities = [
+            len(target_topic_words & corpus_topic) / max(len(target_topic_words | corpus_topic), 1)
+            for corpus_topic in corpus_topic_words
+        ]
+        conceptual_originality = 1 - max(jaccard_similarities) if jaccard_similarities else 1.0
     
-    # Debugging output
-    st.subheader("Topic Analysis")
-    st.write("**Target Page Topics:**", target_topic_words)
-    for i, corpus_topic in enumerate(corpus_topic_words):
-        st.write(f"**Corpus Page {i+1} Topics:**", corpus_topic)
-        st.write(f"Jaccard Similarity with Target: {1 - conceptual_originality:.4f}")
+        # Debugging output
+        st.subheader("Topic Analysis")
+        st.write("Target Page Topics:", target_topic_words)
+        for i, corpus_topic in enumerate(corpus_topic_words):
+            st.write(f"Corpus Page {i+1} Topics:", corpus_topic)
+            st.write(f"Jaccard Similarity with Target: {1 - conceptual_originality:.4f}")
     
-    return conceptual_originality
+        return conceptual_originality
+    except Exception as e:
+        st.error(f"BERTopic failed: {e}. Defaulting to full originality.")
+        return 1.0
 
 def compute_hybrid_originality(target_text, corpus_texts, alpha=0.5):
     """Compute hybrid originality score by combining SBERT semantic similarity and BERTopic conceptual originality."""
@@ -75,9 +81,9 @@ def compute_hybrid_originality(target_text, corpus_texts, alpha=0.5):
     
     # Debugging output
     st.subheader("Originality Breakdown")
-    st.write(f"**Semantic Originality (SBERT):** {semantic_originality:.4f}")
-    st.write(f"**Conceptual Originality (BERTopic):** {conceptual_originality:.4f}")
-    st.write(f"**Final Hybrid Originality Score:** {hybrid_originality:.4f}")
+    st.write(f"Semantic Originality (SBERT): {semantic_originality:.4f}")
+    st.write(f"Conceptual Originality (BERTopic): {conceptual_originality:.4f}")
+    st.write(f"Final Hybrid Originality Score: {hybrid_originality:.4f}")
     
     return hybrid_originality
 
