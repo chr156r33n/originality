@@ -4,11 +4,12 @@ import numpy as np
 from sentence_transformers import SentenceTransformer, util
 from bertopic import BERTopic
 from bs4 import BeautifulSoup
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 
 def load_models():
     """Load SBERT and BERTopic models."""
     sbert_model = SentenceTransformer("all-MiniLM-L6-v2")
-    bertopic_model = BERTopic(min_topic_size=2, calculate_probabilities=True, verbose=True)
+    bertopic_model = BERTopic(min_topic_size=5, calculate_probabilities=True, verbose=True)
     return sbert_model, bertopic_model
 
 sbert_model, bertopic_model = load_models()
@@ -25,6 +26,10 @@ def fetch_main_content(url):
     except requests.RequestException:
         return ""
 
+def filter_topics(topic_words):
+    """Remove stopwords and low-weighted topic words."""
+    return {word for word, weight in topic_words if word.lower() not in ENGLISH_STOP_WORDS and weight > 0.05}
+
 def compute_similarity(target_embedding, corpus_embeddings):
     """Compute cosine similarity between target and corpus embeddings."""
     similarities = util.cos_sim(target_embedding, corpus_embeddings)
@@ -39,8 +44,8 @@ def compute_conceptual_originality(target_text, corpus_texts):
     try:
         all_texts = [target_text] + corpus_texts
         topics, _ = bertopic_model.fit_transform(all_texts)
-        target_topic_words = set(bertopic_model.get_topic(topics[0]))
-        corpus_topic_words = [set(bertopic_model.get_topic(t)) for t in topics[1:] if t != -1]
+        target_topic_words = filter_topics(bertopic_model.get_topic(topics[0]))
+        corpus_topic_words = [filter_topics(bertopic_model.get_topic(t)) for t in topics[1:] if t != -1]
         
         jaccard_similarities = [
             len(target_topic_words & corpus_topic) / max(len(target_topic_words | corpus_topic), 1)
@@ -50,9 +55,9 @@ def compute_conceptual_originality(target_text, corpus_texts):
     
         # Debugging output
         st.subheader("Topic Analysis")
-        st.write("Target Page Topics:", target_topic_words)
+        st.write("Target Page Topics (Filtered):", target_topic_words)
         for i, corpus_topic in enumerate(corpus_topic_words):
-            st.write(f"Corpus Page {i+1} Topics:", corpus_topic)
+            st.write(f"Corpus Page {i+1} Topics (Filtered):", corpus_topic)
             st.write(f"Jaccard Similarity with Target: {1 - conceptual_originality:.4f}")
     
         return conceptual_originality
