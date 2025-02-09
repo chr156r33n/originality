@@ -44,6 +44,14 @@ def compute_conceptual_originality(target_text, corpus_texts):
         for corpus_topic in corpus_topic_words
     ]
     conceptual_originality = 1 - max(jaccard_similarities) if jaccard_similarities else 1.0
+    
+    # Debugging output
+    st.subheader("Topic Analysis")
+    st.write("**Target Page Topics:**", target_topic_words)
+    for i, corpus_topic in enumerate(corpus_topic_words):
+        st.write(f"**Corpus Page {i+1} Topics:**", corpus_topic)
+        st.write(f"Jaccard Similarity with Target: {1 - conceptual_originality:.4f}")
+    
     return conceptual_originality
 
 def compute_hybrid_originality(target_text, corpus_texts, alpha=0.5):
@@ -64,6 +72,13 @@ def compute_hybrid_originality(target_text, corpus_texts, alpha=0.5):
     
     # Combine both scores
     hybrid_originality = alpha * semantic_originality + (1 - alpha) * conceptual_originality
+    
+    # Debugging output
+    st.subheader("Originality Breakdown")
+    st.write(f"**Semantic Originality (SBERT):** {semantic_originality:.4f}")
+    st.write(f"**Conceptual Originality (BERTopic):** {conceptual_originality:.4f}")
+    st.write(f"**Final Hybrid Originality Score:** {hybrid_originality:.4f}")
+    
     return hybrid_originality
 
 # Streamlit UI
